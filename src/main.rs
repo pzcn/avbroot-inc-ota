@@ -126,55 +126,7 @@ fn sign_payload(
     Ok((p, m))
 }
 
-    println!("Generating new OTA metadata");
 
-    // Set up preconditions checks to ensure that the incremental OTA can only
-    // be applied on top of the correct source OS build.
-    let mut inc_metadata = new_metadata.clone();
-    let inc_precondition = inc_metadata
-        .precondition
-        .as_mut()
-        .ok_or_else(|| anyhow!("New full OTA has no preconditions"))?;
-    let old_postcondition = old_metadata
-        .postcondition
-        .as_ref()
-        .ok_or_else(|| anyhow!("Old full OTA has no postconditions"))?;
-    inc_precondition.build = old_postcondition.build.clone();
-    inc_precondition.build_incremental = old_postcondition.build_incremental.clone();
-
-    let data_descriptor_size = 16;
-    let metadata = ota::add_metadata(
-        &entries,
-        &mut zip_writer,
-        // Offset where next entry would begin.
-        entries.last().map(|e| e.offset + e.size).unwrap() + data_descriptor_size,
-        &inc_metadata,
-        payload_metadata_size.unwrap(),
-    )
-    .context("Failed to write new OTA metadata")?;
-
-    let signing_writer = zip_writer
-        .finish()
-        .context("Failed to finalize output zip")?;
-    let buffered_writer = signing_writer
-        .finish(key, cert)
-        .context("Failed to sign output zip")?;
-    let hole_punching_writer = buffered_writer
-        .into_inner()
-        .context("Failed to flush output zip")?;
-    let mut raw_writer = hole_punching_writer.into_inner();
-    raw_writer.flush().context("Failed to flush output zip")?;
-
-    println!("Verifying metadata offsets");
-    raw_writer.rewind()?;
-    ota::verify_metadata(
-        BufReader::new(&mut raw_writer),
-        &metadata,
-        payload_metadata_size.unwrap(),
-    )
-    .context("Failed to verify OTA metadata offsets")?;
-
-    Ok(())
 
 
 fn main_wrapper(cli: &Cli) -> Result<()> {
