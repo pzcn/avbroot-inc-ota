@@ -1,83 +1,50 @@
-use std::ffi::OsString;
+use rsa::{RsaPrivateKey, PaddingScheme};
+use sha2::{Sha256, Digest};
 use std::fs::File;
-use std::io::{BufReader, BufWriter};
-use std::path::PathBuf;
+use std::io::{Read, Write};
+use std::path::Path;
+use std::env;
 
-use anyhow::{Context, Result};
-use avbroot::crypto::{self, PassphraseSource};
-use avbroot::format::payload::{PayloadHeader, PayloadWriter};
-use avbroot::stream::FromReader;
-use clap::Parser;
-use rsa::RsaPrivateKey;
+fn sign_payload(payload_path: &Path, key_path: &Path) -> std::io::Result<()> {
+    // 读取私钥
+    let key = std::fs::read_to_string(key_path)
+        .expect("Unable to read private key");
+    let private_key = RsaPrivateKey::from_pem(&key)
+        .expect("Unable to parse private key");
 
-/// Sign an unsigned payload.bin file.
-#[derive(Debug, Parser)]
-struct Cli {
-    /// Path to unsigned payload.bin file.
-    #[arg(long, value_name = "FILE", value_parser)]
-    input: PathBuf,
+    // 读取payload
+    let mut file = File::open(payload_path)?;
+    let mut payload = Vec::new();
+    file.read_to_end(&mut payload)?;
 
-    /// Path to output signed payload.bin file.
-    #[arg(long, value_name = "FILE", value_parser)]
-    output: PathBuf,
+    // 计算SHA256哈希
+    let mut hasher = Sha256::new();
+    hasher.update(&payload);
+    let hash = hasher.finalize();
 
-    /// Private key for signing the payload.
-    #[arg(short, long, value_name = "FILE", value_parser)]
-    key: PathBuf,
+    // 使用私钥签名哈希
+    let padding = PaddingScheme::new_pkcs1v15_sign(Some(rsa::Hash::SHA2_256));
+    let signature = private_key.sign(padding, &hash)
+        .expect("Failed to sign");
 
-    /// Environment variable containing the private key passphrase.
-    #[arg(long, value_name = "ENV_VAR", value_parser, group = "pass")]
-    pass_env_var: Option<OsString>,
-
-    /// Text file containing the private key passphrase.
-    #[arg(long, value_name = "FILE", value_parser, group = "passphrase")]
-    pass_file: Option<PathBuf>,
-}
-
-/// Sign a (potentially unsigned) payload without making any other
-/// modifications to it.
-fn sign_payload(
-    unsigned_payload: &PathBuf,
-    output: &PathBuf,
-    key: &RsaPrivateKey,
-) -> Result<()> {
-    let inc_raw_reader = File::open(unsigned_payload)
-        .with_context(|| format!("Failed to open for reading: {:?}", unsigned_payload))?;
-    let mut inc_reader = BufReader::new(inc_raw_reader);
-    let inc_header = PayloadHeader::from_reader(&mut inc_reader)
-        .with_context(|| format!("Failed to parse payload header: {:?}", unsigned_payload))?;
-
-    let output_file = File::create(output)
-        .with_context(|| format!("Failed to create output file: {:?}", output))?;
-    let output_writer = BufWriter::new(output_file);
-    let mut payload_writer = PayloadWriter::new(output_writer, inc_header.clone(), key.clone())
-        .context("Failed to write payload header")?;
-
-    std::io::copy(&mut inc_reader, &mut payload_writer)
-        .with_context(|| format!("Failed to copy payload data"))?;
-
-    payload_writer
-        .finish()
-        .context("Failed to finalize payload")?;
+    // 将签名写入到文件
+    let mut output = File::create("signature.bin")?;
+    output.write_all(&signature)?;
 
     Ok(())
 }
 
-fn main() -> Result<()> {
-    let cli = Cli::parse();
+fn main() {
+    let args: Vec<String> = env::args().collect();
+    if args.len() != 3 {
+        println!("Usage: {} <payload.bin> <private.pem>", args[0]);
+        return;
+    }
 
-    let passphrase_source = if let Some(v) = &cli.pass_env_var {
-        PassphraseSource::EnvVar(v.clone())
-    } else if let Some(p) = &cli.pass_file {
-        PassphraseSource::File(p.clone())
-    } else {
-        PassphraseSource::Prompt(format!("Enter passphrase for {:?}: ", cli.key))
-    };
+    let payload_path = Path::new(&args[1]);
+    let key_path = Path::new(&args[2]);
 
-    let key = crypto::read_pem_key_file(&cli.key, &passphrase_source)
-        .with_context(|| format!("Failed to load key: {:?}", cli.key))?;
-
-    sign_payload(&cli.input, &cli.output, &key)?;
-
-    Ok(())
+    if let Err(e) = sign_payload(&payload_path, &key_path) {
+        eprintln!("Error: {}", e);
+    }
 }
