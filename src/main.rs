@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
@@ -5,6 +6,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use avbroot::crypto::{self, PassphraseSource};
 use avbroot::format::payload::{PayloadHeader, PayloadWriter};
+use avbroot::stream::FromReader;
 use clap::Parser;
 use rsa::RsaPrivateKey;
 
@@ -25,7 +27,7 @@ struct Cli {
 
     /// Environment variable containing the private key passphrase.
     #[arg(long, value_name = "ENV_VAR", value_parser, group = "pass")]
-    pass_env_var: Option<String>,
+    pass_env_var: Option<OsString>,
 
     /// Text file containing the private key passphrase.
     #[arg(long, value_name = "FILE", value_parser, group = "passphrase")]
