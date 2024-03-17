@@ -15,7 +15,7 @@ This is a proof of concept, but has been tested on real devices and should work 
     m delta_generator
     ```
 
-    The output will be in `out/host/linux-x86/bin/delta_generator`.
+    The output will be in `out/host/linux-x86/bin/delta_generator`. 
 
 3. Ensure the [Rust toolchain](https://www.rust-lang.org/) is installed.
 
