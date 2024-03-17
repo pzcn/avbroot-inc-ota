@@ -175,7 +175,7 @@ fn sign_payload(
     .context("Failed to verify OTA metadata offsets")?;
 
     Ok(())
-}
+
 
 fn main_wrapper(cli: &Cli) -> Result<()> {
     let passphrase_source = if let Some(v) = &cli.pass_env_var {
